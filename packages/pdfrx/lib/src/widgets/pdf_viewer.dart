@@ -402,9 +402,29 @@ class _PdfViewerState extends State<PdfViewer>
   @override
   Widget build(BuildContext context) {
     final listenable = widget.documentRef.resolveListenable();
+    
+    // If we have a background color manager, wrap with ListenableBuilder
+    if (widget.params.backgroundColorManager != null) {
+      return ListenableBuilder(
+        listenable: widget.params.backgroundColorManager!,
+        builder: (context, child) {
+          return _buildViewerContent(listenable);
+        },
+      );
+    }
+    
+    return _buildViewerContent(listenable);
+  }
+
+  Widget _buildViewerContent(PdfDocumentListenable listenable) {
+    // Get the current background color, using manager if available, then dynamic function, then default
+    final currentBackgroundColor = widget.params.backgroundColorManager?.currentColor ?? 
+                                  widget.params.dynamicBackgroundColor?.call() ?? 
+                                  widget.params.backgroundColor;
+    
     if (listenable.error != null) {
       return Container(
-        color: widget.params.backgroundColor,
+        color: currentBackgroundColor,
         child: (widget.params.errorBannerBuilder ?? _defaultErrorBannerBuilder)(
           context,
           listenable.error!,
@@ -415,13 +435,13 @@ class _PdfViewerState extends State<PdfViewer>
     }
     if (_document == null) {
       return Container(
-        color: widget.params.backgroundColor,
+        color: currentBackgroundColor,
         child: widget.params.loadingBannerBuilder?.call(context, listenable.bytesDownloaded, listenable.totalBytes),
       );
     }
 
     return Container(
-      color: widget.params.backgroundColor,
+      color: currentBackgroundColor,
       child: PdfViewerKeyHandler(
         onKeyRepeat: _onKey,
         onFocusChange: (hasFocus) => focusReportForPreventingContextMenuWeb(this, hasFocus),
@@ -3157,6 +3177,37 @@ class PdfViewerController extends ValueListenable<Matrix4> {
 
   @override
   Matrix4 get value => _state._txController.value;
+
+  /// Change the background color of the PDF viewer.
+  /// 
+  /// [color] - The new background color. Pass null to reset to default.
+  /// [notifyListeners] - Whether to notify listeners of the change (default: true).
+  void setBackgroundColor(Color? color, {bool notifyListeners = true}) {
+    final manager = params.backgroundColorManager;
+    if (manager != null) {
+      manager.setBackgroundColor(color);
+    } else {
+      // If no manager is available, we can't change the color dynamically
+      // The user should use backgroundColorManager in PdfViewerParams
+      throw StateError('Cannot change background color without backgroundColorManager. '
+          'Please set backgroundColorManager in PdfViewerParams.');
+    }
+  }
+
+  /// Set the background color to transparent.
+  void setTransparentBackground() {
+    setBackgroundColor(Colors.transparent);
+  }
+
+  /// Reset the background color to the default.
+  void resetBackgroundColor() {
+    setBackgroundColor(null);
+  }
+
+  /// Set the background color to a specific color.
+  void setBackgroundColorTo(Color color) {
+    setBackgroundColor(color);
+  }
 
   set value(Matrix4 newValue) => _state._txController.value = makeMatrixInSafeRange(newValue);
 

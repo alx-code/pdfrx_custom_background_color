@@ -47,6 +47,9 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   final textSearcher = ValueNotifier<PdfTextSearcher?>(null);
   final _markers = <int, List<Marker>>{};
   List<PdfPageTextRange>? textSelections;
+  
+  // Nuevo: Manager para el color de fondo dinámico
+  late final backgroundColorManager = PdfViewerBackgroundColorManager(defaultColor: Colors.grey);
 
   void _update() {
     if (mounted) {
@@ -175,6 +178,31 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                             controller.goToPage(pageNumber: controller.pageCount);
                           }
                         },
+                ),
+                // Nuevos botones para cambiar el color de fondo
+                IconButton(
+                  visualDensity: visualDensity,
+                  icon: const Icon(Icons.palette),
+                  onPressed: documentRef == null
+                      ? null
+                      : () => _showBackgroundColorDialog(),
+                  tooltip: 'Cambiar color de fondo',
+                ),
+                IconButton(
+                  visualDensity: visualDensity,
+                  icon: const Icon(Icons.visibility_off),
+                  onPressed: documentRef == null
+                      ? null
+                      : () => controller.setTransparentBackground(),
+                  tooltip: 'Fondo transparente',
+                ),
+                IconButton(
+                  visualDensity: visualDensity,
+                  icon: const Icon(Icons.refresh),
+                  onPressed: documentRef == null
+                      ? null
+                      : () => controller.resetBackgroundColor(),
+                  tooltip: 'Restaurar color por defecto',
                 ),
               ],
             );
@@ -313,6 +341,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                         //passwordProvider: () => passwordDialog(context),
                         controller: controller,
                         params: PdfViewerParams(
+                          backgroundColorManager: backgroundColorManager,
                           layoutPages: _layoutPages[_layoutTypeIndex],
                           scrollHorizontallyByMouseWheel: isHorizontalLayout,
                           pageAnchor: isHorizontalLayout ? PdfPageAnchor.left : PdfPageAnchor.top,
@@ -695,5 +724,73 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     if (path == null) return null;
     final parts = path.split(RegExp(r'[\\/]'));
     return parts.isEmpty ? path : parts.last;
+  }
+
+  /// Muestra un diálogo para seleccionar el color de fondo
+  void _showBackgroundColorDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Seleccionar color de fondo'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Elige un color para el fondo del PDF:'),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _buildColorButton(Colors.white, 'Blanco'),
+                  _buildColorButton(Colors.grey, 'Gris'),
+                  _buildColorButton(Colors.black, 'Negro'),
+                  _buildColorButton(Colors.blue, 'Azul'),
+                  _buildColorButton(Colors.green, 'Verde'),
+                  _buildColorButton(Colors.red, 'Rojo'),
+                  _buildColorButton(Colors.yellow, 'Amarillo'),
+                  _buildColorButton(Colors.purple, 'Púrpura'),
+                  _buildColorButton(Colors.orange, 'Naranja'),
+                  _buildColorButton(Colors.pink, 'Rosa'),
+                  _buildColorButton(Colors.transparent, 'Transparente'),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Construye un botón de color
+  Widget _buildColorButton(Color color, String label) {
+    return GestureDetector(
+      onTap: () {
+        if (color == Colors.transparent) {
+          controller.setTransparentBackground();
+        } else {
+          controller.setBackgroundColorTo(color);
+        }
+        Navigator.of(context).pop();
+      },
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: Colors.grey),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: color == Colors.transparent
+            ? const Icon(Icons.visibility_off, color: Colors.grey)
+            : null,
+      ),
+    );
   }
 }

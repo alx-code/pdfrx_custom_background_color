@@ -6,6 +6,42 @@ import 'package:flutter/services.dart';
 
 import '../../pdfrx.dart';
 
+/// A class to manage dynamic background color changes for PDF viewers.
+class PdfViewerBackgroundColorManager extends ChangeNotifier {
+  Color? _currentColor;
+  final Color _defaultColor;
+
+  PdfViewerBackgroundColorManager({Color defaultColor = Colors.grey}) 
+    : _defaultColor = defaultColor;
+
+  /// Get the current background color or the default if none is set.
+  Color get currentColor => _currentColor ?? _defaultColor;
+
+  /// Set the background color to a new value.
+  /// Pass null to reset to the default color.
+  void setBackgroundColor(Color? color) {
+    if (_currentColor != color) {
+      _currentColor = color;
+      notifyListeners();
+    }
+  }
+
+  /// Reset the background color to the default.
+  void resetToDefault() {
+    setBackgroundColor(null);
+  }
+
+  /// Set the background color to transparent.
+  void setTransparent() {
+    setBackgroundColor(Colors.transparent);
+  }
+
+  /// Set the background color to a specific color.
+  void setColor(Color color) {
+    setBackgroundColor(color);
+  }
+}
+
 /// Viewer customization parameters.
 ///
 /// Changes to several builder functions such as [layoutPages] does not
@@ -15,6 +51,8 @@ class PdfViewerParams {
   const PdfViewerParams({
     this.margin = 8.0,
     this.backgroundColor = Colors.grey,
+    this.dynamicBackgroundColor,
+    this.backgroundColorManager,
     this.layoutPages,
     this.normalizeMatrix,
     this.maxScale = 8.0,
@@ -77,6 +115,15 @@ class PdfViewerParams {
 
   /// Background color of the viewer.
   final Color backgroundColor;
+
+  /// Dynamic background color function that can be called to change the background color at runtime.
+  /// This function should return the desired background color or null to use the default [backgroundColor].
+  /// Useful for implementing themes or dynamic color changes.
+  final Color? Function()? dynamicBackgroundColor;
+
+  /// Background color manager for dynamic color changes.
+  /// If provided, this manager will be used instead of [dynamicBackgroundColor].
+  final PdfViewerBackgroundColorManager? backgroundColorManager;
 
   /// Function to customize the layout of the pages.
   ///

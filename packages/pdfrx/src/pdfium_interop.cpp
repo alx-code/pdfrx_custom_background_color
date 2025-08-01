@@ -12,12 +12,6 @@
 #define PDFRX_INTEROP_API
 #endif
 
-struct pdfrx_file_access;
-
-typedef void(PDFRX_INTEROP_API *pdfrx_read_function)(void *param,
-                                               size_t position,
-                                               unsigned char *pBuf,
-                                               size_t size);
 
 struct pdfrx_file_access
 {
