@@ -1,3 +1,19 @@
+## 0.1.15
+
+- **BREAKING**: Integrated `loadText()` and `loadTextCharRects()` into a single function `loadText()` to fix crash issue ([#434](https://github.com/espresso3389/pdfrx/issues/434))
+- FIXED: Coordinate calculation errors when loading annotation links ([#458](https://github.com/espresso3389/pdfrx/issues/458))
+
+## 0.1.14
+
+- Experimental support for dynamic font installation on native platforms ([#456](https://github.com/espresso3389/pdfrx/issues/456))
+
+## 0.1.13
+
+- Add font loading APIs for WASM: `reloadFonts()` and `addFontData()` methods
+- Add `PdfDocumentMissingFontsEvent` to notify about missing fonts in PDF documents
+- FIXED: Text coordinate calculation when CropBox/MediaBox has non-zero origin ([#441](https://github.com/espresso3389/pdfrx/issues/441))
+- Improve WASM stability and font handling
+
 ## 0.1.12
 
 - Fix text character rectangle rotation handling in `loadTextCharRects()` and related methods

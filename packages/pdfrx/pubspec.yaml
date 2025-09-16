@@ -39,19 +39,8 @@ dev_dependencies:
 flutter:
   plugin:
     platforms:
-      android:
-        ffiPlugin: true
-      ios:
-        ffiPlugin: true
-        sharedDarwinSource: true
-      linux:
-        ffiPlugin: true
-      macos:
-        ffiPlugin: true
-        sharedDarwinSource: true
-      windows:
-        ffiPlugin: true
       web:
+      # Deshabilitar plataformas nativas para que el plugin no compile en Android/iOS
 
   assets:
     - assets/

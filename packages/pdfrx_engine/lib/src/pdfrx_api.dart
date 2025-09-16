@@ -1,4 +1,8 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
+
+/// Pdfrx API
+library;
+
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
@@ -22,6 +26,8 @@ class Pdfrx {
   static String? pdfiumModulePath;
 
   /// Font paths scanned by pdfium if supported.
+  ///
+  /// It should be set before calling any Pdfrx's functions.
   ///
   /// It is not supported on Flutter Web.
   static final fontPaths = <String>[];
@@ -62,8 +68,8 @@ class Pdfrx {
   static FutureOr<String> Function()? getCacheDirectory;
 }
 
-abstract class PdfDocumentFactory {
-  static PdfDocumentFactory instance = PdfDocumentFactoryImpl();
+abstract class PdfrxEntryFunctions {
+  static PdfrxEntryFunctions instance = PdfrxEntryFunctionsImpl();
 
   Future<PdfDocument> openAsset(
     String name, {
@@ -110,6 +116,21 @@ abstract class PdfDocumentFactory {
     Map<String, String>? headers,
     bool withCredentials = false,
   });
+
+  /// Reload the fonts.
+  Future<void> reloadFonts();
+
+  /// Add font data to font cache.
+  ///
+  /// For Web platform, this is the only way to add custom fonts (the fonts are cached on memory).
+  ///
+  /// For other platforms, the font data is cached on temporary files in the cache directory; if you want to keep
+  /// the font data permanently, you should save the font data to some other persistent storage and set its path
+  /// to [Pdfrx.fontPaths].
+  Future<void> addFontData({required String face, required Uint8List data});
+
+  /// Clear all font data added by [addFontData].
+  Future<void> clearAllFontData();
 }
 
 /// Callback function to notify download progress.
@@ -174,7 +195,7 @@ abstract class PdfDocument {
     PdfPasswordProvider? passwordProvider,
     bool firstAttemptByEmptyPassword = true,
     bool useProgressiveLoading = false,
-  }) => PdfDocumentFactory.instance.openFile(
+  }) => PdfrxEntryFunctions.instance.openFile(
     filePath,
     passwordProvider: passwordProvider,
     firstAttemptByEmptyPassword: firstAttemptByEmptyPassword,
@@ -195,7 +216,7 @@ abstract class PdfDocument {
     PdfPasswordProvider? passwordProvider,
     bool firstAttemptByEmptyPassword = true,
     bool useProgressiveLoading = false,
-  }) => PdfDocumentFactory.instance.openAsset(
+  }) => PdfrxEntryFunctions.instance.openAsset(
     name,
     passwordProvider: passwordProvider,
     firstAttemptByEmptyPassword: firstAttemptByEmptyPassword,
@@ -225,7 +246,7 @@ abstract class PdfDocument {
     String? sourceName,
     bool allowDataOwnershipTransfer = false,
     void Function()? onDispose,
-  }) => PdfDocumentFactory.instance.openData(
+  }) => PdfrxEntryFunctions.instance.openData(
     data,
     passwordProvider: passwordProvider,
     firstAttemptByEmptyPassword: firstAttemptByEmptyPassword,
@@ -263,7 +284,7 @@ abstract class PdfDocument {
     bool useProgressiveLoading = false,
     int? maxSizeToCacheOnMemory,
     void Function()? onDispose,
-  }) => PdfDocumentFactory.instance.openCustom(
+  }) => PdfrxEntryFunctions.instance.openCustom(
     read: read,
     fileSize: fileSize,
     sourceName: sourceName,
@@ -305,7 +326,7 @@ abstract class PdfDocument {
     bool preferRangeAccess = false,
     Map<String, String>? headers,
     bool withCredentials = false,
-  }) => PdfDocumentFactory.instance.openUri(
+  }) => PdfrxEntryFunctions.instance.openUri(
     uri,
     passwordProvider: passwordProvider,
     firstAttemptByEmptyPassword: firstAttemptByEmptyPassword,
@@ -349,6 +370,7 @@ typedef PdfPageLoadingCallback<T> = FutureOr<bool> Function(int currentPageNumbe
 enum PdfDocumentEventType {
   /// [PdfDocumentPageStatusChangedEvent]: Page status changed.
   pageStatusChanged,
+  missingFonts, // [PdfDocumentMissingFontsEvent]: Missing fonts changed.
 }
 
 /// Base class for PDF document events.
@@ -372,6 +394,20 @@ class PdfDocumentPageStatusChangedEvent implements PdfDocumentEvent {
 
   /// The pages that have changed.
   final List<PdfPage> pages;
+}
+
+/// Event that is triggered when the list of missing fonts in the PDF document has changed.
+class PdfDocumentMissingFontsEvent implements PdfDocumentEvent {
+  PdfDocumentMissingFontsEvent(this.document, this.missingFonts);
+
+  @override
+  PdfDocumentEventType get type => PdfDocumentEventType.missingFonts;
+
+  @override
+  final PdfDocument document;
+
+  /// The list of missing fonts.
+  final List<PdfFontQuery> missingFonts;
 }
 
 /// Handles a PDF page in [PdfDocument].
@@ -411,10 +447,6 @@ abstract class PdfPage {
   /// - [flags] is used to specify additional rendering flags. The default is [PdfPageRenderFlags.none].
   /// - [cancellationToken] can be used to cancel the rendering process. It must be created by [createCancellationToken].
   ///
-  /// The following figure illustrates what each parameter means:
-  ///
-  /// ![image](data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM4MCIgdmlld0JveD0iMCAwIDMxMjMgMTg1MyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBvdmVyZmxvdz0iaGlkZGVuIj48ZGVmcz48Y2xpcFBhdGggaWQ9InByZWZpeF9fYSI+PHBhdGggZD0iTTQ4MiAxNDhoMzEyM3YxODUzSDQ4MnoiLz48L2NsaXBQYXRoPjwvZGVmcz48ZyBjbGlwLXBhdGg9InVybCgjcHJlZml4X19hKSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTQ4MiAtMTQ4KSI+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTQ4MiAxNDhoMzEyM3YxODUzSDQ4MnoiLz48cGF0aCBkPSJNMTE5Ny41IDQ1MS41aDgwOC44TTY2NC41IDExODkuNWwxMzQxLjQgNTAzLjQ2IiBzdHJva2U9IiNCRkJGQkYiIHN0cm9rZS13aWR0aD0iMS4xNDYiIHN0cm9rZS1taXRlcmxpbWl0PSI4IiBzdHJva2UtZGFzaGFycmF5PSI0LjU4MyAzLjQzOCIgZmlsbD0ibm9uZSIvPjxwYXRoIHN0cm9rZT0iI0JGQkZCRiIgc3Ryb2tlLXdpZHRoPSI2Ljg3NSIgc3Ryb2tlLW1pdGVybGltaXQ9IjgiIGZpbGw9IiNEOUQ5RDkiIGQ9Ik0yMDA1LjUgNDUxLjVoMTMwNnYxMjQxaC0xMzA2eiIvPjxwYXRoIHN0cm9rZT0iI0JGQkZCRiIgc3Ryb2tlLXdpZHRoPSI2Ljg3NSIgc3Ryb2tlLW1pdGVybGltaXQ9IjgiIGZpbGw9IiNEOUQ5RDkiIGQ9Ik0yMzI2LjUgMTEzNi41aDYyMnY0MjNoLTYyMnoiLz48cGF0aCBkPSJNMjE0Ni41IDk3N2MwLTE5My4wMjQgMjIyLjUxLTM0OS41IDQ5Ny0zNDkuNXM0OTcgMTU2LjQ3NiA0OTcgMzQ5LjVjMCAxOTMuMDItMjIyLjUxIDM0OS41LTQ5NyAzNDkuNXMtNDk3LTE1Ni40OC00OTctMzQ5LjV6IiBmaWxsPSIjRjJGMkYyIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiLz48cGF0aCBkPSJNMjQzMi41MSA4NzIuNDczYzAtMjAuMTA2IDIzLjE3LTM2LjQwNiA1MS43Ny0zNi40MDYgMjguNTkgMCA1MS43NyAxNi4zIDUxLjc3IDM2LjQwNiAwIDIwLjEwNy0yMy4xOCAzNi40MDctNTEuNzcgMzYuNDA3LTI4LjYgMC01MS43Ny0xNi4zLTUxLjc3LTM2LjQwN20zMTguNDQgMGMwLTIwLjEwNiAyMy4xOC0zNi40MDYgNTEuNzctMzYuNDA2IDI4LjYgMCA1MS43NyAxNi4zIDUxLjc3IDM2LjQwNiAwIDIwLjEwNy0yMy4xNyAzNi40MDctNTEuNzcgMzYuNDA3LTI4LjU5IDAtNTEuNzctMTYuMy01MS43Ny0zNi40MDciIHN0cm9rZT0iI0JGQkZCRiIgc3Ryb2tlLXdpZHRoPSI2Ljg3NSIgc3Ryb2tlLW1pdGVybGltaXQ9IjgiIGZpbGw9IiNDM0MzQzMiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjxwYXRoIGQ9Ik0yMzc0LjEyIDExMjkuNDJjMTc5LjU5IDg2LjczIDM1OC45NiA4Ni43MyA1MzguMTMgME0yMTQ2LjUgOTc3YzAtMTkzLjAyNCAyMjIuNTEtMzQ5LjUgNDk3LTM0OS41czQ5NyAxNTYuNDc2IDQ5NyAzNDkuNWMwIDE5My4wMi0yMjIuNTEgMzQ5LjUtNDk3IDM0OS41cy00OTctMTU2LjQ4LTQ5Ny0zNDkuNXoiIHN0cm9rZT0iI0JGQkZCRiIgc3Ryb2tlLXdpZHRoPSI2Ljg3NSIgc3Ryb2tlLW1pdGVybGltaXQ9IjgiIGZpbGw9Im5vbmUiLz48cGF0aCBkPSJNMjAyOC40MiAxNzI5LjA2aDEyNTkuMzZ2Ni44OEgyMDI4LjQyem00LjU4IDE3LjE5bC0yNy41LTEzLjc1IDI3LjUtMTMuNzV6bTEyNTAuMTktMjcuNWwyNy41IDEzLjc1LTI3LjUgMTMuNzV6Ii8+PHRleHQgZm9udC1mYW1pbHk9IkNvbnNvbGFzLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI0MDAiIGZvbnQtc2l6ZT0iODMiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI0NTIgMTgwNSkiPmZ1bGxXaWR0aDwvdGV4dD48cGF0aCBkPSJNMzM2Mi45NCA0NzQuNDE2VjE2NzAuMzJoLTYuODhWNDc0LjQxNnpNMzM0NS43NSA0NzlsMTMuNzUtMjcuNSAxMy43NSAyNy41em0yNy41IDExODYuNzNsLTEzLjc1IDI3LjUtMTMuNzUtMjcuNXoiLz48dGV4dCBmb250LWZhbWlseT0iQ29uc29sYXMsc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjQwMCIgZm9udC1zaXplPSI4MyIgdHJhbnNmb3JtPSJyb3RhdGUoOTAgMTI2Ni4xMDUgMjEwOS4xMDUpIj5mdWxsSGVpZ2h0PC90ZXh0PjxwYXRoIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSI2Ljg3NSIgc3Ryb2tlLW1pdGVybGltaXQ9IjgiIGZpbGw9IiNGRkYiIGZpbGwtb3BhY2l0eT0iLjI1OSIgZD0iTTIwNzguNSA1MzMuNWg3NTV2NjY2aC03NTV6Ii8+PHBhdGggZD0iTTIxMDEuNDIgMTIzMC4wNmg3MDkuMzZ2Ni44OGgtNzA5LjM2em00LjU4IDE3LjE5bC0yNy41LTEzLjc1IDI3LjUtMTMuNzV6bTcwMC4xOS0yNy41bDI3LjUgMTMuNzUtMjcuNSAxMy43NXpNMjg3My45NCA1NTYuNDE3djYyMC41MTNoLTYuODhWNTU2LjQxN3pNMjg1Ni43NSA1NjFsMTMuNzUtMjcuNSAxMy43NSAyNy41em0yNy41IDYxMS4zNWwtMTMuNzUgMjcuNS0xMy43NS0yNy41eiIvPjx0ZXh0IGZvbnQtZmFtaWx5PSJDb25zb2xhcyxzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNDAwIiBmb250LXNpemU9IjgzIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyMzQwLjk1IDEzMTApIj53aWR0aDwvdGV4dD48dGV4dCBmb250LWZhbWlseT0iQ29uc29sYXMsc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjQwMCIgZm9udC1zaXplPSI4MyIgdHJhbnNmb3JtPSJyb3RhdGUoOTAgMTA2NS4zNTUgMTgyOS4zNTUpIj5oZWlnaHQ8L3RleHQ+PHBhdGggc3Ryb2tlPSIjQkZCRkJGIiBzdHJva2Utd2lkdGg9IjYuODc1IiBzdHJva2UtbWl0ZXJsaW1pdD0iOCIgZmlsbD0iI0Q5RDlEOSIgZD0iTTY2NC41IDQ1MS41aDUzM3Y3MzhoLTUzM3oiLz48cGF0aCBzdHJva2U9IiNCRkJGQkYiIHN0cm9rZS13aWR0aD0iNi44NzUiIHN0cm9rZS1taXRlcmxpbWl0PSI4IiBmaWxsPSIjRDlEOUQ5IiBkPSJNNzk1LjUgODU4LjVoMjU0djI1MmgtMjU0eiIvPjxwYXRoIGQ9Ik03MjEuNSA3NjRjMC0xMTQuNTk5IDkwLjg4Ni0yMDcuNSAyMDMtMjA3LjUgMTEyLjExIDAgMjAzIDkyLjkwMSAyMDMgMjA3LjVzLTkwLjg5IDIwNy41LTIwMyAyMDcuNWMtMTEyLjExNCAwLTIwMy05Mi45MDEtMjAzLTIwNy41eiIgZmlsbD0iI0YyRjJGMiIgZmlsbC1ydWxlPSJldmVub2RkIi8+PHBhdGggZD0iTTgzOC4zMTkgNzAxLjk0MmMwLTExLjkzNyA5LjQ2Ny0yMS42MTUgMjEuMTQ2LTIxLjYxNXMyMS4xNDYgOS42NzggMjEuMTQ2IDIxLjYxNWMwIDExLjkzNy05LjQ2NyAyMS42MTUtMjEuMTQ2IDIxLjYxNXMtMjEuMTQ2LTkuNjc4LTIxLjE0Ni0yMS42MTVtMTMwLjA3IDBjMC0xMS45MzcgOS40NjgtMjEuNjE1IDIxLjE0Ni0yMS42MTUgMTEuNjc1IDAgMjEuMTQ1IDkuNjc4IDIxLjE0NSAyMS42MTUgMCAxMS45MzctOS40NyAyMS42MTUtMjEuMTQ1IDIxLjYxNS0xMS42NzggMC0yMS4xNDYtOS42NzgtMjEuMTQ2LTIxLjYxNSIgc3Ryb2tlPSIjQkZCRkJGIiBzdHJva2Utd2lkdGg9IjYuODc1IiBzdHJva2UtbWl0ZXJsaW1pdD0iOCIgZmlsbD0iI0MzQzNDMyIgZmlsbC1ydWxlPSJldmVub2RkIi8+PHBhdGggZD0iTTgxNC40NzMgODU0LjQ5MmM3My4zNTEgNTEuNDkzIDE0Ni42MTcgNTEuNDkzIDIxOS43OTcgME03MjEuNSA3NjRjMC0xMTQuNTk5IDkwLjg4Ni0yMDcuNSAyMDMtMjA3LjUgMTEyLjExIDAgMjAzIDkyLjkwMSAyMDMgMjA3LjVzLTkwLjg5IDIwNy41LTIwMyAyMDcuNWMtMTEyLjExNCAwLTIwMy05Mi45MDEtMjAzLTIwNy41eiIgc3Ryb2tlPSIjQkZCRkJGIiBzdHJva2Utd2lkdGg9IjYuODc1IiBzdHJva2UtbWl0ZXJsaW1pdD0iOCIgZmlsbD0ibm9uZSIvPjx0ZXh0IGZvbnQtZmFtaWx5PSJDb25zb2xhcyxzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNDAwIiBmb250LXNpemU9IjgzIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyMDg4LjEzIDYwOCkiPig8L3RleHQ+PHRleHQgZm9udC1mYW1pbHk9IkNvbnNvbGFzLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI0MDAiIGZvbnQtc2l6ZT0iODMiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDIxMzMuMzkgNjA4KSI+eCx5PC90ZXh0Pjx0ZXh0IGZvbnQtZmFtaWx5PSJDb25zb2xhcyxzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNDAwIiBmb250LXNpemU9IjgzIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyMjY5LjE3IDYwOCkiPik8L3RleHQ+PHBhdGggZD0iTTIwNjEgNTM0YzAtOS45NDEgOC41MS0xOCAxOS0xOHMxOSA4LjA1OSAxOSAxOC04LjUxIDE4LTE5IDE4LTE5LTguMDU5LTE5LTE4eiIgZmlsbC1ydWxlPSJldmVub2RkIi8+PHBhdGggZD0iTTExOTcuNSAxMTg5LjVsMjExNCA1MDMuNDYiIHN0cm9rZT0iI0JGQkZCRiIgc3Ryb2tlLXdpZHRoPSIxLjE0NiIgc3Ryb2tlLW1pdGVybGltaXQ9IjgiIHN0cm9rZS1kYXNoYXJyYXk9IjQuNTgzIDMuNDM4IiBmaWxsPSJub25lIi8+PHRleHQgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI0MDAiIGZvbnQtc2l6ZT0iODMiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDc3NS4xMSA0MDkpIj5PcmlnaW5hbDwvdGV4dD48dGV4dCBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjQwMCIgZm9udC1zaXplPSI4MyIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU0Ny42OSA0MDYpIj5TY2FsZWQ8L3RleHQ+PHBhdGggZD0iTTEyNDMuOTQgNDc0LjQxN3Y2OTIuNDMzaC02Ljg4VjQ3NC40MTd6TTEyMjYuNzUgNDc5bDEzLjc1LTI3LjUgMTMuNzUgMjcuNXptMjcuNSA2ODMuMjdsLTEzLjc1IDI3LjUtMTMuNzUtMjcuNXoiLz48dGV4dCBmb250LWZhbWlseT0iQ29uc29sYXMsc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjQwMCIgZm9udC1zaXplPSI4MyIgdHJhbnNmb3JtPSJyb3RhdGUoOTAgMzQwLjQwNSA5MzQuNDA1KSI+cGFnZS5oZWlnaHQ8L3RleHQ+PHBhdGggZD0iTTY4Ny40MTcgMTIyNC4wNmg0ODYuNzYzdjYuODhINjg3LjQxN3ptNC41ODMgMTcuMTlsLTI3LjUtMTMuNzUgMjcuNS0xMy43NXptNDc3LjU5LTI3LjVsMjcuNSAxMy43NS0yNy41IDEzLjc1eiIvPjx0ZXh0IGZvbnQtZmFtaWx5PSJDb25zb2xhcyxzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNDAwIiBmb250LXNpemU9IjgzIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg3MDEuNDUxIDEyOTYpIj5wYWdlLndpZHRoPC90ZXh0PjwvZz48L3N2Zz4=)
-  ///
   /// The following code extract the area of (20,30)-(120,130) from the page image rendered at 1000x1500 pixels:
   /// ```dart
   /// final image = await page.render(
@@ -445,7 +477,12 @@ abstract class PdfPage {
   static final _reSpaces = RegExp(r'(\s+)', unicode: true);
   static final _reNewLine = RegExp(r'\r?\n', unicode: true);
 
-  /// Load text.
+  /// Load structured text with character bounding boxes.
+  ///
+  /// The function internally does test flow analysis (reading order) and line segmentation to detect
+  /// text direction and line breaks.
+  ///
+  /// To access the raw text, use [loadText].
   Future<PdfPageText> loadStructuredText() async {
     final raw = await _loadFormattedText();
     if (raw == null) {
@@ -657,12 +694,14 @@ abstract class PdfPage {
   }
 
   Future<PdfPageRawText?> _loadFormattedText() async {
-    final inputFullText = await loadText();
-    final inputCharRects = await loadTextCharRects();
+    final input = await loadText();
+    if (input == null) {
+      return null;
+    }
 
     if (rotation.index != 0) {
-      for (int i = 0; i < inputCharRects.length; i++) {
-        inputCharRects[i] = inputCharRects[i].rotate(rotation.index, this);
+      for (int i = 0; i < input.charRects.length; i++) {
+        input.charRects[i] = input.charRects[i].rotate(rotation.index, this);
       }
     }
 
@@ -670,14 +709,14 @@ abstract class PdfPage {
     final charRects = <PdfRect>[];
 
     // Process the whole text
-    final lnMatches = _reNewLine.allMatches(inputFullText).toList();
+    final lnMatches = _reNewLine.allMatches(input.fullText).toList();
     int lineStart = 0;
     int prevEnd = 0;
     for (int i = 0; i < lnMatches.length; i++) {
       lineStart = prevEnd;
       final match = lnMatches[i];
-      fullText.write(inputFullText.substring(lineStart, match.start));
-      charRects.addAll(inputCharRects.sublist(lineStart, match.start));
+      fullText.write(input.fullText.substring(lineStart, match.start));
+      charRects.addAll(input.charRects.sublist(lineStart, match.start));
       prevEnd = match.end;
 
       // Microsoft Word sometimes outputs vertical text like this: "縦\n書\nき\nの\nテ\nキ\nス\nト\nで\nす\n。\n"
@@ -687,8 +726,8 @@ abstract class PdfPage {
         final len = match.start - lineStart;
         final nextLen = next.start - match.end;
         if (len == 1 && nextLen == 1) {
-          final rect = inputCharRects[lineStart];
-          final nextRect = inputCharRects[match.end];
+          final rect = input.charRects[lineStart];
+          final nextRect = input.charRects[match.end];
           final nextCenterX = nextRect.center.x;
           if (rect.left < nextCenterX && nextCenterX < rect.right && rect.top > nextRect.top) {
             // The line is vertical, and the line-feed is virtual
@@ -696,12 +735,12 @@ abstract class PdfPage {
           }
         }
       }
-      fullText.write(inputFullText.substring(match.start, match.end));
-      charRects.addAll(inputCharRects.sublist(match.start, match.end));
+      fullText.write(input.fullText.substring(match.start, match.end));
+      charRects.addAll(input.charRects.sublist(match.start, match.end));
     }
-    if (prevEnd < inputFullText.length) {
-      fullText.write(inputFullText.substring(prevEnd));
-      charRects.addAll(inputCharRects.sublist(prevEnd));
+    if (prevEnd < input.fullText.length) {
+      fullText.write(input.fullText.substring(prevEnd));
+      charRects.addAll(input.charRects.sublist(prevEnd));
     }
 
     return PdfPageRawText(fullText.toString(), charRects);
@@ -710,14 +749,7 @@ abstract class PdfPage {
   /// Load plain text for the page.
   ///
   /// For text with character bounding boxes, use [loadStructuredText].
-  Future<String> loadText();
-
-  /// Load character bounding boxes for the page text.
-  ///
-  /// Each [PdfRect] corresponds to a character in the text loaded by [loadText].
-  ///
-  /// For text with character bounding boxes, use [loadStructuredText].
-  Future<List<PdfRect>> loadTextCharRects();
+  Future<PdfPageRawText?> loadText();
 
   /// Load links.
   ///
@@ -1003,7 +1035,7 @@ enum PdfTextDirection {
 
 /// Text fragment in PDF page.
 class PdfPageTextFragment {
-  PdfPageTextFragment({
+  const PdfPageTextFragment({
     required this.pageText,
     required this.index,
     required this.length,
@@ -1252,7 +1284,15 @@ class PdfRect {
     }
   }
 
+  /// Inflate (or deflate) the rectangle.
+  ///
+  /// [dx] is added to left and right, and [dy] is added to top and bottom.
   PdfRect inflate(double dx, double dy) => PdfRect(left - dx, top + dy, right + dx, bottom - dy);
+
+  /// Translate the rectangle.
+  ///
+  /// [dx] is added to left and right, and [dy] is added to top and bottom.
+  PdfRect translate(double dx, double dy) => PdfRect(left + dx, top + dy, right + dx, bottom + dy);
 
   @override
   bool operator ==(Object other) {
@@ -1561,11 +1601,16 @@ class PdfPoint {
         throw ArgumentError.value(rotate, 'rotate');
     }
   }
+
+  /// Translate the point.
+  ///
+  /// [dx] is added to x, and [dy] is added to y.
+  PdfPoint translate(double dx, double dy) => PdfPoint(x + dx, y + dy);
 }
 
 /// Compares two lists for element-by-element equality.
 ///
-/// **NOTE: This function is copiedd from flutter's `foundation` library to remove dependency to Flutter**
+/// **NOTE: This function is copied from flutter's `foundation` library to remove dependency to Flutter**
 bool _listEquals<T>(List<T>? a, List<T>? b) {
   if (a == null) {
     return b == null;
@@ -1582,4 +1627,86 @@ bool _listEquals<T>(List<T>? a, List<T>? b) {
     }
   }
   return true;
+}
+
+class PdfFontQuery {
+  const PdfFontQuery({
+    required this.face,
+    required this.weight,
+    required this.isItalic,
+    required this.charset,
+    required this.pitchFamily,
+  });
+
+  /// Font face name.
+  final String face;
+
+  /// Font weight.
+  final int weight;
+
+  /// Whether the font is italic.
+  final bool isItalic;
+
+  /// PDFium's charset ID.
+  final PdfFontCharset charset;
+
+  /// Pitch family flags.
+  ///
+  /// It can be any combination of the following values:
+  /// - `fixed` = 1
+  /// - `roman` = 16
+  /// - `script` = 64
+  final int pitchFamily;
+
+  bool get isFixed => (pitchFamily & 1) != 0;
+  bool get isRoman => (pitchFamily & 16) != 0;
+  bool get isScript => (pitchFamily & 64) != 0;
+
+  String _getPitchFamily() {
+    return [if (isFixed) 'fixed', if (isRoman) 'roman', if (isScript) 'script'].join(',');
+  }
+
+  @override
+  String toString() =>
+      'PdfFontQuery(face: "$face", weight: $weight, italic: $isItalic, charset: $charset, pitchFamily: $pitchFamily=[${_getPitchFamily()}])';
+}
+
+/// PDFium font charset ID.
+///
+enum PdfFontCharset {
+  ansi(0),
+  default_(1),
+  symbol(2),
+
+  /// Japanese
+  shiftJis(128),
+
+  /// Korean
+  hangul(129),
+
+  /// Chinese Simplified
+  gb2312(134),
+
+  /// Chinese Traditional
+  chineseBig5(136),
+  greek(161),
+  vietnamese(163),
+  hebrew(177),
+  arabic(178),
+  cyrillic(204),
+  thai(222),
+  easternEuropean(238);
+
+  const PdfFontCharset(this.pdfiumCharsetId);
+
+  /// PDFium's charset ID.
+  final int pdfiumCharsetId;
+
+  static final _value2Enum = {for (final e in PdfFontCharset.values) e.pdfiumCharsetId: e};
+
+  /// Convert PDFium's charset ID to [PdfFontCharset].
+  static PdfFontCharset fromPdfiumCharsetId(int id) => _value2Enum[id]!;
+
+  @override
+  String toString() => '$name($pdfiumCharsetId)';
 }

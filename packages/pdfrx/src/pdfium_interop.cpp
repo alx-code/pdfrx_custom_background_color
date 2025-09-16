@@ -3,6 +3,11 @@
 #include <condition_variable>
 #include <mutex>
 #include <fpdfview.h>
+// Definir el tipo de función de lectura para pdfrx
+typedef int (*pdfrx_read_function)(void* param,
+                                   unsigned long position,
+                                   unsigned char* pBuf,
+                                   unsigned long size);
 
 #if defined(_WIN32)
 #define PDFRX_EXPORT __declspec(dllexport)

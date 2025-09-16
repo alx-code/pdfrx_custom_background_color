@@ -41,10 +41,6 @@ android {
         }
     }
 
-    sourceSets {
-        main.jniLibs.srcDirs += ".lib/latest"
-    }
-
     defaultConfig {
         minSdk = 21
     }
