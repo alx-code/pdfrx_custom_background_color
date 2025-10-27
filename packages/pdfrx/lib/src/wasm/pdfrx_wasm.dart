@@ -51,14 +51,46 @@ Future<Map<Object?, dynamic>> _sendCommand(String command, {Map<Object?, dynamic
 @JS()
 external String pdfiumWasmWorkerUrl;
 
-/// [PdfDocumentFactory] for PDFium WASM implementation.
-class PdfDocumentFactoryWasmImpl extends PdfDocumentFactory {
+/// [PdfrxEntryFunctions] for PDFium WASM implementation.
+class PdfrxEntryFunctionsWasmImpl extends PdfrxEntryFunctions {
   /// Default path to the WASM modules
   ///
   /// Normally, the WASM modules are provided by pdfrx_wasm package and this is the path to its assets.
   static const defaultWasmModulePath = 'assets/packages/pdfrx/assets/';
 
   bool _initialized = false;
+
+  // --- PdfrxEntryFunctions (engine 0.1.21) required overrides ---
+  @override
+  Future<void> initPdfium() async {
+    // Ensure WASM worker and modules are initialized
+    await _init();
+  }
+
+  @override
+  Future<void> addFontData({required String face, required Uint8List data}) async {
+    // Fonts injection is optional for Web; gracefully no-op to keep compatibility
+    // You can implement forwarding to the worker if needed in the future.
+    return;
+  }
+
+  @override
+  Future<void> clearAllFontData() async {
+    // No-op for Web implementation
+    return;
+  }
+
+  @override
+  Future<void> reloadFonts() async {
+    // No-op for Web implementation
+    return;
+  }
+
+  @override
+  Future<T> suspendPdfiumWorkerDuringAction<T>(FutureOr<T> Function() action) async {
+    // En Web no compartimos instancia de PDFium, así que no se requiere bloqueo
+    return await action();
+  }
 
   Future<void> _init() async {
     if (_initialized) return;
@@ -459,13 +491,21 @@ class _PdfPageWasm extends PdfPage {
   }
 
   @override
-  Future<String> loadText() async {
-    if (document.isDisposed) return '';
+  Future<PdfPageRawText?> loadText() async {
+    if (document.isDisposed) return null;
     final result = await _sendCommand(
       'loadText',
       parameters: {'docHandle': document.document['docHandle'], 'pageIndex': pageNumber - 1},
     );
-    return result['fullText'] as String;
+    final fullText = result['fullText'] as String;
+    final charRectsRaw = result['charRects'] as List?;
+    final charRects =
+        charRectsRaw?.map((rect) {
+          final r = rect as List;
+          return PdfRect(r[0] as double, r[1] as double, r[2] as double, r[3] as double);
+        }).toList() ??
+        [];
+    return PdfPageRawText(fullText, charRects);
   }
 
   @override
